@@ -10,7 +10,6 @@ const mock_messages = [
   { text: "Claro, sigue éstos consejos: puedes usar JavaScript, Python o C++, dependiendo de tu nivel de programación", sender: "LLM"}
 ]
  
-
 function App() {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState(mock_messages)
@@ -45,5 +44,4 @@ function App() {
     </>
   )
 }
-
 export default App

@@ -1,20 +1,22 @@
-import { useState } from 'react'
+import { useContext, useEffect } from 'react'
 import axios from 'axios'
 import './App.css'
+import Conversation from './components/Conversation'
+import Input from './components/Input'
+import { ConversationContext } from './contexts/ConversationProvider'
 
-const mock_messages = [
+const MOCK_MESSAGES = [
   { content: "Hola", role: "user" },
   { content: "Hola, en que te puedo ayudar hoy?", role: "assistant" },
   { content: "Quiero que me digas como programar mejor", role: "user" },
   { content: "Claro, sigue éstos consejos: puedes usar JavaScript, Python o C++, dependiendo de tu nivel de programación", role: "assistant" }
-]
+];
 
 
 function App() {
-  const [input, setInput] = useState('')
-  const [messages, setMessages] = useState(mock_messages)
+  const { messages, setMessages, loadMessages, updateMessages } = useContext(ConversationContext)
 
-  async function sendMessage() {
+  async function sendMessage(input) {
     console.log("Enviando mensaje", input)
 
     /* Paso por paso...
@@ -24,7 +26,7 @@ function App() {
     setMessages(new_messages)
     */
 
-    setMessages((prev) => [...prev, { content: input, role: "user" }])
+    setMessages([...messages, { content: input, role: "user" }])
 
     // fetch
 
@@ -45,20 +47,20 @@ function App() {
 
     const respuesta = await axios.post("http://localhost:11434/api/chat", data)
 
-    console.log(respuesta.data.message)
+    setMessages([...messages, { content: input, role: "user" } ,respuesta.data.message])
+    updateMessages()
 
-    setMessages((prev) => [...prev, respuesta.data.message])
+    console.log(respuesta.data.message)
   }
+
+  useEffect(() => {
+  loadMessages()
+  }, [loadMessages])
 
   return (
     <>
-
-      <div>
-        {messages.map((message, i) => <p key={i} style={message.role == 'user' ? { color: 'blue' } : { color: 'red' }}>{message.content}</p>)}
-      </div>
-
-      <input onChange={(e) => setInput(e.target.value)} />
-      <button onClick={sendMessage}>Enviar</button>
+      <Conversation messages={messages}/>
+      <Input sendMessage={sendMessage} />
     </>
   )
 }

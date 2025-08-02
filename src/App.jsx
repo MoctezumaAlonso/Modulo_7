@@ -9,7 +9,6 @@ const mock_messages = [
   { text: "Quiero que me digas como programar mejor", sender: "user"},
   { text: "Claro, sigue éstos consejos: puedes usar JavaScript, Python o C++, dependiendo de tu nivel de programación", sender: "LLM"}
 ]
- 
 
 function App() {
   const [input, setInput] = useState('')

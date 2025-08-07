@@ -1,68 +1,119 @@
-import { useContext, useEffect } from 'react'
-import axios from 'axios'
-import './App.css'
-import Conversation from './components/Conversation'
-import Input from './components/Input'
-import { ConversationContext } from './contexts/ConversationProvider'
+import { useState, useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { SendHorizontal } from "lucide-react";
+import { useGlobal } from "./context/global-context";
+import useOllamaHook from "./api/useOllamaHook";
 
-const MOCK_MESSAGES = [
-  { content: "Hola", role: "user" },
-  { content: "Hola, en que te puedo ayudar hoy?", role: "assistant" },
-  { content: "Quiero que me digas como programar mejor", role: "user" },
-  { content: "Claro, sigue éstos consejos: puedes usar JavaScript, Python o C++, dependiendo de tu nivel de programación", role: "assistant" }
-];
+// Esquema de validación con Zod
+const messageSchema = z.object({
+  text: z
+    .string()
+    .min(3, "El mensaje debe tener al menos 3 caracteres")
+    .max(200, "El mensaje es demasiado largo"),
+});
 
+export default function App() {
+  const hook = useGlobal();
+  const ollamaHook = useOllamaHook();
+  const [messages, setMessages] = useState([]);
 
-function App() {
-  const { messages, setMessages, loadMessages, updateMessages } = useContext(ConversationContext)
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm({
+    resolver: zodResolver(messageSchema),
+  });
 
-  async function sendMessage(input) {
-    console.log("Enviando mensaje", input)
+  const onSubmit = (data) => {
+    setMessages((prev) => [...prev, { text: data.text, sender: "user" }]);
+    reset();
 
-    /* Paso por paso...
-    const new_messages = [...messages]
-    const new_message = { text: input, sender: "user" }
-    new_messages.push(new_message)
-    setMessages(new_messages)
-    */
+    // Simular respuesta del bot
+    ollamaHook.handleSubmit(data.text);
+  };
 
-    setMessages([...messages, { content: input, role: "user" }])
-
-    // fetch
-
-    // axios
-
-    const data = {
-      "model": "deepseek-r1:1.5b",
-      "stream": false,
-      "think": false,
-      "raw": true,
-      "messages": [
-        {
-          "role": "user",
-          "content": input
-        }
-      ]
-    };
-
-    const respuesta = await axios.post("http://localhost:11434/api/chat", data)
-
-    setMessages([...messages, { content: input, role: "user" } ,respuesta.data.message])
-    updateMessages()
-
-    console.log(respuesta.data.message)
-  }
-
+  // Al recibir chunks de streaming: actualiza SOLO el último mensaje del bot
   useEffect(() => {
-  loadMessages()
-  }, [loadMessages])
+    if (!ollamaHook.response) return;
+
+    setMessages((prevMessages) => {
+      const updatedMessages = [...prevMessages];
+      // Encuentra el último mensaje del bot (de atrás hacia adelante)
+      const lastBotIndex = [...updatedMessages]
+        .reverse()
+        .findIndex((msg) => msg.sender === "bot");
+
+      if (lastBotIndex !== -1) {
+        const realIndex = updatedMessages.length - 1 - lastBotIndex;
+        updatedMessages[realIndex] = {
+          ...updatedMessages[realIndex],
+          text: ollamaHook.response,
+        };
+      } else {
+        // fallback: si no había, lo agrega
+        updatedMessages.push({ text: ollamaHook.response, sender: "bot" });
+      }
+
+      return updatedMessages;
+    });
+  }, [ollamaHook.response]);
+
+  // Dispara eventos al contexto global cuando cambia el historial
+  useEffect(() => {
+    if (!messages.length) return;
+    const event = { type: "@current_chat", payload: messages };
+    hook.dispatch(event);
+  }, [messages]);
 
   return (
-    <>
-      <Conversation messages={messages}/>
-      <Input sendMessage={sendMessage} />
-    </>
-  )
+    <div className="flex flex-col h-screen w-full bg-gray-900 text-white justify-end">
+      <div className="flex-1 overflow-y-auto p-4 space-y-2 flex flex-col">
+        {messages.map((msg, index) => (
+          <div
+            key={index}
+            className={`px-4 py-2 rounded-lg ${msg.sender === "user"
+                ? "bg-blue-600 self-end"
+                : "bg-gray-700 self-start mt-2"
+              }`}
+          >
+            {msg.text}
+            {ollamaHook.loading && msg.sender === "bot" && index === messages.length - 1 && (
+              <span className="ml-2 animate-pulse">...</span>
+            )}
+          </div>
+        ))}
+      </div>
+      <form
+        onSubmit={handleSubmit(onSubmit)}
+        className="p-4 flex flex-col bg-gray-800 space-y-2"
+      >
+        <div className="flex items-center">
+          <input
+            type="text"
+            placeholder="Escribe un mensaje..."
+            className="flex-1 p-2 rounded-lg bg-gray-700 border border-gray-600 text-white focus:outline-none"
+            {...register("text")}
+          />
+          <button
+            type="submit"
+            className="ml-2 p-2 bg-blue-600 rounded-lg"
+          >
+            <SendHorizontal size={20} />
+          </button>
+        </div>
+        {errors.text && (
+          <span className="text-red-400 text-sm">{errors.text.message}</span>
+        )}
+      </form>
+    </div >
+  );
 }
 
-export default App
+
+// NOTA: PROMPT PROPUESTO, para clase: 
+// <think> Alright, the user said "hola". That's Spanish for "hello". I should respond in a friendly manner. Maybe say "¡Hola! ¿En qué puedo ayudarte hoy?" to be welcoming and offer assistance. </think> ¡Hola! ¿En qué puedo ayudarte hoy?
+// es es un ejemplo d ela repuesta del bot, como podria manejarse esta parte de forma mas natural? dame varias opciones de como podria ser la respuesta del bot, pero sin que diga "pensando" o <think>... </think> y que sea mas natural, como si fuera una persona real respondiendo.
